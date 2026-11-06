@@ -21,7 +21,7 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y postgresql-client
 
-            - name: Dump database
+      - name: Dump database
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
@@ -32,21 +32,15 @@ jobs:
           FILENAME="backup-repo/db-backup-${TIMESTAMP}.sql"
 
           echo "Starting pg_dump..."
-          if ! pg_dump "$DATABASE_URL" \
-              --no-owner \
-              --no-privileges \
-              --schema=public \
-              --schema=auth \
-              --verbose \
-              > "$FILENAME" 2> /tmp/pg_dump_error.log; then
-            echo "❌ pg_dump FAILED"
+          if ! pg_dump "$DATABASE_URL" --no-owner --no-privileges --schema=public --schema=auth --verbose > "$FILENAME" 2> /tmp/pg_dump_error.log; then
+            echo "FAILED: pg_dump error"
             echo "=========== FULL ERROR ==========="
             cat /tmp/pg_dump_error.log
             echo "=================================="
             exit 1
           fi
 
-          echo "✅ pg_dump succeeded"
+          echo "SUCCESS: pg_dump completed"
           gzip "$FILENAME"
           echo "Backup: ${FILENAME}.gz"
           echo "Size: $(du -h ${FILENAME}.gz | cut -f1)"
