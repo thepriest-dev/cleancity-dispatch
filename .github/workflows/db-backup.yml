@@ -1,0 +1,56 @@
+name: Database Backup
+
+on:
+  schedule:
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout backup repo
+        uses: actions/checkout@v4
+        with:
+          repository: thepriest-dev/cleancity-db-backups
+          token: ${{ secrets.BACKUP_REPO_TOKEN }}
+          path: backup-repo
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y postgresql-client
+
+      - name: Dump database
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          TIMESTAMP=$(date +%Y-%m-%d_%H-%M-%S)
+          FILENAME="backup-repo/db-backup-${TIMESTAMP}.sql"
+          pg_dump "$DATABASE_URL" \
+            --no-owner \
+            --no-privileges \
+            --schema=public \
+            --schema=auth \
+            --verbose \
+            > "$FILENAME" 2>&1
+          gzip "$FILENAME"
+          echo "Backup: ${FILENAME}.gz"
+          echo "Size: $(du -h ${FILENAME}.gz | cut -f1)"
+
+      - name: Commit and push to backup repo
+        working-directory: backup-repo
+        run: |
+          git config user.name "CleanCity Backup Bot"
+          git config user.email "backup-bot@cleancity.local"
+          git add .
+          git commit -m "Automated backup $(date +%Y-%m-%d_%H-%M-%S)" || echo "No changes"
+          git push
+
+      - name: Prune backups older than 30 days
+        working-directory: backup-repo
+        run: |
+          find . -name "db-backup-*.sql.gz" -mtime +30 -delete
+          git add .
+          git diff --staged --quiet || git commit -m "Prune old backups"
+          git diff --staged --quiet || git push
